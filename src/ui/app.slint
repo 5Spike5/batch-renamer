@@ -1,0 +1,244 @@
+// === 一条文件的记录 ===
+import { Button, LineEdit, ScrollView, CheckBox } from "std-widgets.slint";
+export struct FileEntry {
+    old-name: string,    // 原始文件名（含扩展名）
+    new-name: string,    // 预览/重命名后的文件名
+    checked: bool,       // 复选框：是否参与重命名
+    index: int,          // 序号（用于 {n} 占位符）
+}
+
+// === 执行结果汇总 ===
+export struct RenameResult {
+    total: int,          // 选中文件总数
+    success: int,        // 成功数
+    failed: int,         // 失败数
+}
+export component App inherits Window {
+    preferred-width: 800px;
+    preferred-height: 600px;
+    title: "Batch renamer";
+
+    // --Property--
+
+    //文件列表
+    in-out property <[FileEntry]> files: [
+    {
+        old-name: "test1.jpg",
+        new-name: "1_cat.jpg",
+        checked: true,
+        index: 1
+    },
+    {
+        old-name: "test2.jpg",
+        new-name: "2_cat.jpg",
+        checked: true,
+        index: 2
+    }
+];
+    //当前选择的文件夹路径
+    in-out property <string> folder-path:"";
+    //用户输入的改名规则模板
+    in-out property <string> rule-template:"{n}_{prefix}";
+    //用户输入的前缀文本（从 rule-template 中提取，或单独输入）
+    in property <string> prefix-text;
+
+    //执行进度
+    in property <bool> is-running:false;//是否正在命名中
+    in-out property <int> progress-current:0;
+    in-out property <int> progress-total:0;
+    in-out property <string> status-text:"就绪";
+    
+    //执行结果
+    in property <RenameResult> renamer-result;
+
+    // --callback--
+
+    //用户点击文件夹
+    callback choose-folder-clicked();
+    //用户点击预览（传入当前规则模板，Rust 侧重新计算 new-name）
+    callback preview-clicked(string);
+    //用户点击“执行重命名”
+    callback execute-clicked();
+    //用户勾选/取消某一行（传入 index + 新状态）
+    callback item-checked-changed(int,bool);
+
+    // --布局--
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        
+        //1.文件夹选择行
+        HorizontalLayout {
+            spacing: 8px;
+
+            Button {
+                text: "📁 选择文件夹";
+                clicked => {root.choose-folder-clicked();}
+            }
+            Text {
+                text: "root.folder-path";
+                vertical-alignment: center;
+                color: gray;
+                overflow: elide;
+            }
+        }
+
+        //2.改名规则行
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: "规则";
+                vertical-alignment: center;
+            }
+
+            rule-input := LineEdit {
+                text <=> root.rule-template;
+                placeholder-text: "{n}_{prefix}";
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: " 可用: {n} = 序号, {prefix} = 前缀, {YYYYMMDD} = 日期";
+                vertical-alignment: center;
+                font-size: 12px;
+                color: gray;
+            }
+        }
+
+        // ③ 文件列表（主力区域）
+        Rectangle {
+            vertical-stretch: 1;
+            border-width: 1px;
+            border-color: #ccc;
+
+            //无文件时占位
+            if root.files.length == 0:Text{
+                text: "请先选择文件夹";
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: gray;
+            }
+
+            if root.files.length > 0: ScrollView {
+                VerticalLayout {
+                    //表头
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        height: 30px;
+                        Text {width: 32px;text: "#";vertical-alignment: center;}
+                        Text {horizontal-stretch: 1;text: "原始文件名";font-weight: 600;vertical-alignment: center;}
+                        Text {width: 24px;text: "";vertical-alignment: center;}
+                        Text {horizontal-stretch: 1;text: "新文件名";font-weight: 600;vertical-alignment: center;}
+                    }
+
+                    //每行
+                    for file[index] in root.files: HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        spacing: 4px;
+                        
+                        //复选框
+                        CheckBox {
+                            checked: file.checked;
+                            toggled => {
+                                root.item-checked-changed(index, self.checked);
+                            }
+                        }
+
+                        //旧文件名
+                        Text {
+                            text: file.old-name;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
+
+                        //箭头
+                        Text {
+                            text: "→";
+                            vertical-alignment: center;
+                            color: gray;
+                        }
+                        
+                        //新文件名(预览)
+                        Text {
+                            text: file.new-name;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                            vertical-alignment: center;
+                            color: green;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ④ 进度行
+        HorizontalLayout {
+            spacing: 8px;
+            //文字进度
+            Text {
+                text: "root.status-text";
+                vertical-alignment: center;
+            }
+
+            //进度条(用Rectangle模拟)
+            Rectangle {
+                width: 200px;
+                height: 16px;
+                border-radius: 8px;
+                background: #e0e0e0;
+                Rectangle {
+                    y: 0px;
+                    x: 0px;
+                    width: root.progress-total>0?(root.progress-current*200px/root.progress-total):0px;
+                    height: 100%;
+                    border-radius: 8px;
+                    background: #4caf50;
+                }
+            }
+            Text {
+                text: root.progress-total > 0
+                ? "\{root.progress-current}/\{root.progress-total}"
+                : "";
+                vertical-alignment: center;
+                font-size: 12px;
+            }
+
+            //弹性空间
+            Rectangle {horizontal-stretch: 1;}
+        }
+
+        // ⑤ 操作按钮行
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: center;
+            Button {
+                text: "🔍 预览";
+                enabled: !root.is-running && root.files.length > 0;
+                clicked => {
+                    root.preview-clicked(root.rule-template);
+                }
+            }
+            Button {
+                text:  "⚡ 执行重命名";
+                enabled: !root.is-running && root.files.length > 0;
+                clicked => {
+                    root.execute-clicked();
+                }
+            }
+        }
+
+        // ⑥ 结果摘要行（执行完毕后显示）
+        if root.renamer-result.total > 0:Text{
+            text: "完成：成功\{root.renamer-result.success}个，失败\{root.renamer-result.failed}个";
+            horizontal-alignment: center;
+            font-size: 13px;
+            color: root.renamer-result.failed > 0 ? red : green;
+        }
+    }
+}
