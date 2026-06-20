@@ -21,20 +21,7 @@ export component App inherits Window {
     // --Property--
 
     //文件列表
-    in-out property <[FileEntry]> files: [
-    {
-        old-name: "test1.jpg",
-        new-name: "1_cat.jpg",
-        checked: true,
-        index: 1
-    },
-    {
-        old-name: "test2.jpg",
-        new-name: "2_cat.jpg",
-        checked: true,
-        index: 2
-    }
-];
+    in-out property <[FileEntry]> files: [];
     //当前选择的文件夹路径
     in-out property <string> folder-path:"";
     //用户输入的改名规则模板
@@ -182,7 +169,7 @@ export component App inherits Window {
             spacing: 8px;
             //文字进度
             Text {
-                text: "root.status-text";
+                text: root.status-text;
                 vertical-alignment: center;
             }
 

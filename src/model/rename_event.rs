@@ -1,3 +1,5 @@
+use slint::SharedString;
+
 /// 重命名线程 → 主线程的消息
 #[derive(Debug, Clone)]
 pub enum RenameEvent {
@@ -5,7 +7,7 @@ pub enum RenameEvent {
     Progress {
         current: usize,
         total: usize,
-        current_file:String
+        current_file:SharedString
     },
     /// 全部完成：成功数、失败数
     Finished {
