@@ -1060,6 +1060,137 @@ app.set_files(model.into());
 
 ---
 
+## 8. 已知问题与优化方案
+
+> 基于当前代码审查发现的问题。每个条目标注类型、严重程度、位置及修复方向。
+
+---
+
+### 8.1 Bug 报告
+
+| # | 类型 | 严重度 | 位置 | 问题 |
+|---|------|--------|------|------|
+| B1 | 🐛 Bug | 🔴 **高** | `execute.rs:38` | 未校验 `folder-path` 是否为空。如果用户直接点"执行"（没选文件夹），`folder` 为空字符串 → 重命名会在当前工作目录（`CWD`）执行，可能改错文件 |
+| B2 | 🐛 Bug | 🔴 **高** | `main.rs:43` | `Finished` 分支有 `// TODO: 刷新文件列表` **未实现**。改名后列表仍显示旧文件名，用户以为没成功。同时 `renamer-result` property 从未被赋值 → UI 底部的结果摘要行永远不显示 |
+| B3 | 🐛 Bug | 🟡 **中** | `preview.rs:40` | 预览时 `{n}` 序号用的是 `enumerate()` 索引而不是 `entry.index`。如果文件 0 取消勾选、文件 1 勾选，预览时勾选文件获得 n=1（enumerate 重新编号），但 execute 时 `entry.index` 是固定的 → **预览和执行的序号对不上** |
+| B4 | 🧹 清洁 | 🟢 **低** | `rename_service.rs:44-45` | 生产代码残留了两行 `println!("rule = {}"...)` 调试输出。终端会打印乱码 |
+
+#### B1 修复思路
+
+```rust
+// execute.rs 第 37-38 行之间插入文件夹校验：
+if folder.trim().is_empty() {
+    app.set_status_text("请先选择文件夹".into());
+    app.set_is_running(false);
+    return;
+}
+```
+
+#### B2 修复思路
+
+```rust
+// main.rs 第 37-44 行，在 set_is_running(false) 后补上：
+// 1. 获取当前文件夹路径
+let path = app.get_folder_path().to_string();
+if !path.is_empty() {
+    // 2. 重新扫描目录
+    if let Ok(files) = service::rename_service::scan_directory(&path) {
+        // 3. 重建 FileEntry 列表
+        let entries: Vec<FileEntry> = files.iter().enumerate().map(|(i, name)| {
+            FileEntry { old_name: name.into(), new_name: name.into(), checked: true, index: i as i32 }
+        }).collect();
+        app.set_files(ModelRc::new(VecModel::from(entries)));
+    }
+}
+// 4. 设置结果摘要
+app.set_renamer_result(RenameResult {
+    total: (success + failed) as i32,
+    success: success as i32,
+    failed: failed as i32,
+});
+```
+
+#### B3 修复思路
+
+```rust
+// preview.rs 第 38-44 行，把 enumerate() 改为使用 entry.index：
+for entry in files.iter_mut() {
+    if entry.checked {
+        entry.new_name = rename_service::generate_new_name(
+            &entry.old_name, &rule,
+            entry.index as usize + 1,   // ← 改成固定 index
+            ""
+        ).into();
+    } else {
+        entry.new_name = entry.old_name.clone();
+    }
+}
+```
+
+#### B4 修复思路
+
+```rust
+// rename_service.rs 第 44-45 行，直接删除两行 println!()
+```
+
+---
+
+### 8.2 优化方案
+
+| # | 类型 | 优先级 | 位置 | 建议 |
+|---|------|--------|------|------|
+| O1 | 🔒 安全 | **高** | `main.rs:43` | Finished 后刷列表 + 设 renamer-result（已合并入 B2） |
+| O2 | 🎯 准确 | **中** | `preview.rs:38` | 序号用 `entry.index`（已合并入 B3） |
+| O3 | 🔒 安全 | **中** | `execute.rs:37` | 校验文件夹路径（已合并入 B1） |
+| O4 | ⚡ 性能 | **低** | `main.rs` | Timer 周期从 100ms 改为 200ms — 重命名进度不需要那么高刷新率，减少 CPU 空转 |
+| O5 | ✨ 体验 | **低** | `preview.rs:45` | `validate_preview` 只返回第一个冲突文件名。可以改为收集所有冲突再一次性报错，减少用户反复修改反复预览 |
+| O6 | 🧹 代码 | **低** | `model/rename_event.rs:10-15` | `Progress.current_file` 用 `SharedString`，`Error` 用 `String` → 建议统一为 `String`（减少 `.into()` 心智负担） |
+
+#### O5 修复思路
+
+```rust
+// 把 validate_preview 的签名从返回第一个错误，改为收集所有错误：
+pub fn validate_preview(files: &[FileEntry], rule: &str) -> Result<(), Vec<String>> {
+    let mut errors = Vec::new();
+    // ... 每个检查 pass 用 errors.push(...) 代替 return Err(...)
+    if errors.is_empty() { Ok(()) } else { Err(errors) }
+}
+// preview.rs 侧：
+if let Err(errors) = rename_service::validate_preview(&files, &rule) {
+    app.set_status_text(format!("预览问题:\n{}", errors.join("\n")).into());
+    return;
+}
+```
+
+#### O4 修复思路
+
+```rust
+// main.rs 第 24 行：
+// timer.start(slint::TimerMode::Repeated, Duration::from_millis(100),  // 改前
+timer.start(slint::TimerMode::Repeated, Duration::from_millis(200),      // 改后
+```
+
+---
+
+### 8.3 修复优先级建议
+
+```
+第一优先（立即修，不改会出问题）:
+  ├─ B1 文件夹路径校验（否则可能改 CWD 文件）
+  └─ B2 Finished 刷列表 + 设 renamer-result（否则改名后界面不刷新）
+
+第二优先（功能正确性）:
+  ├─ B3 预览序号改为 entry.index（否则预览和执行编号不一致）
+  └─ O4 Timer 周期 200ms（减轻 CPU 负担）
+
+第三优先（代码整洁）:
+  ├─ B4 删 println! 调试输出
+  ├─ O5 validate_preview 收集多个错误
+  └─ O6 RenameEvent 类型统一
+```
+
+---
+
 ## 你在本项目中练到的知识点
 
 | 知识点 | 在哪个环节出现 | 未来在音乐播放器项目哪里重现 |

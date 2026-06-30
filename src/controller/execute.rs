@@ -36,6 +36,11 @@ pub fn bind_execute(app:&App,tx:Sender<RenameEvent>) {
 
         // 5. 获取文件夹路径
         let folder = app.get_folder_path().to_string();
+        if folder.trim().is_empty() {
+            app.set_status_text("请先选择文件夹".into());
+            app.set_is_running(false);
+            return;
+        }
 
         // 6. 开线程,克隆一份 tx 给新线程，原 tx 留给下一次点击复用
         let tx = tx.clone();

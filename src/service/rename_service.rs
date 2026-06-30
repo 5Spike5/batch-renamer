@@ -41,8 +41,6 @@ pub fn expand_placeholders(rule:&str,index:usize,prefix:&str) -> String{
     let result = rule.replace("{n}", &format!("{:03}",index));
     let result = result.replace("{prefix}", prefix);
     let result = result.replace("{YYYYMMDD}", &today);
-    println!("rule = {}", rule);
-    println!("result = {}", result);
     result
 }
 

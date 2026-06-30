@@ -3,8 +3,8 @@ mod model;
 mod controller;
 mod service;
 use std::{sync::{Arc, Mutex}, time::Duration};
-use slint::Timer;
-use crate::model::rename_event::RenameEvent;
+use slint::{ModelRc, Timer, VecModel};
+use crate::{model::rename_event::RenameEvent, service::rename_service::scan_directory};
 fn main() ->Result<(),slint::PlatformError>{
     // 1. 创建 Slint 窗口
     let app = App::new()?;
@@ -41,6 +41,29 @@ fn main() ->Result<(),slint::PlatformError>{
                                 else  { "全部完成 ✓".into() }
                             );
                             // TODO: 刷新文件列表（重新 scan_directory + set_files）
+                            //1. 获取当前文件夹路径
+                            let path = app.get_folder_path().to_string();
+                            if !path.is_empty() {
+                                //2.重新扫描目录
+                                if let Ok(files) = service::rename_service::scan_directory(&path) {
+                                    //3.重建FileEntry列表
+                                    let entries:Vec<FileEntry> = files.iter().enumerate().map(|(i,name)|{
+                                        FileEntry{
+                                            old_name:name.into(),
+                                            new_name:name.into(),
+                                            checked:true,
+                                            index:i as i32
+                                        }
+                                    }).collect();
+                                    app.set_files(ModelRc::new(VecModel::from(entries)));
+                                }
+                            }
+                            //4.设置结果摘要
+                            app.set_renamer_result(RenameResult{
+                                total:(success + failed) as i32,
+                                success:success as i32,
+                                failed:failed as i32
+                            });
                         }
                     },
                     Ok(RenameEvent::Error(msg)) => {
