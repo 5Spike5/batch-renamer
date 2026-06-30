@@ -117,15 +117,19 @@ pub fn validate_preview(files:&[FileEntry],rule:&str) -> Result<(),String>{
         return Err("请至少选择一个文件".into());
     }
     let mut names = HashSet::new();
-    // 3. 文件名不能为空
+    
     for file in files {
         if !file.checked {
             continue;
         }
-        return Err(format!(
+        // 3. 文件名不能为空
+        if file.new_name.trim().is_empty(){
+            return Err(format!(
             "文件 [{}] 的新名称为空",
             file.old_name
-        ));
+            ));
+        }
+        
         // 4. 文件名不能重复
         if !names.insert(file.new_name.clone()) {
             return Err(format!(
@@ -134,12 +138,15 @@ pub fn validate_preview(files:&[FileEntry],rule:&str) -> Result<(),String>{
             ));
         }
         // 5. 文件名不能包含非法字符
-        if  {
-            
+        if  contains_invalid_chars(&file.new_name){
+            return Err(format!(
+                "文件名包含非法字符：{}",
+                file.new_name
+            ));
         }
     }
     
-
+    Ok(())
 }
 
 fn contains_invalid_chars(name:&str) -> bool {

@@ -42,7 +42,10 @@ pub fn bind_preview(app:&App) {
                 entry.new_name = entry.old_name.clone();
             }
         }
-
+        if let Err(msg) = rename_service::validate_preview(&files, &rule) {
+            app.set_status_text(msg.into());
+            return;
+        }
         //写回UI
         let model = VecModel::from(files);
         
