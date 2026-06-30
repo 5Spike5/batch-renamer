@@ -35,9 +35,9 @@ pub fn bind_preview(app:&App) {
         }
 
         //重新计算预览名称
-        for (i,entry) in files.iter_mut().enumerate() {
+        for entry in files.iter_mut() {
             if entry.checked {
-                entry.new_name = rename_service::generate_new_name(&entry.old_name, &rule, i+1, "").into();
+                entry.new_name = rename_service::generate_new_name(&entry.old_name, &rule, entry.index as usize + 1, "").into();
             }else {
                 entry.new_name = entry.old_name.clone();
             }

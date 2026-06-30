@@ -21,7 +21,7 @@ fn main() ->Result<(),slint::PlatformError>{
         let app_weak = app.as_weak();
         let rx_clone = rx.clone();
         let timer = Timer::default();
-        timer.start(slint::TimerMode::Repeated, Duration::from_millis(100), move ||{
+        timer.start(slint::TimerMode::Repeated, Duration::from_millis(200), move ||{
             let rx_guard = rx_clone.lock().unwrap();
             loop {
                 use std::sync::mpsc::TryRecvError;

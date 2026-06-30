@@ -115,6 +115,7 @@ pub fn validate_preview(files:&[FileEntry],rule:&str) -> Result<(),String>{
         return Err("请至少选择一个文件".into());
     }
     let mut names = HashSet::new();
+    let mut errors = Vec::new();
     
     for file in files {
         if !file.checked {
@@ -122,29 +123,35 @@ pub fn validate_preview(files:&[FileEntry],rule:&str) -> Result<(),String>{
         }
         // 3. 文件名不能为空
         if file.new_name.trim().is_empty(){
-            return Err(format!(
-            "文件 [{}] 的新名称为空",
+            errors.push(format!(
+            "[{}]：新文件名不能为空",
             file.old_name
             ));
         }
         
         // 4. 文件名不能重复
         if !names.insert(file.new_name.clone()) {
-            return Err(format!(
-                "存在重复文件名：{}",
+            errors.push(format!(
+                "[{}]：与其它文件重名 ({})",
+                file.old_name,
                 file.new_name
             ));
         }
         // 5. 文件名不能包含非法字符
         if  contains_invalid_chars(&file.new_name){
-            return Err(format!(
-                "文件名包含非法字符：{}",
+            errors.push(format!(
+                "[{}]：包含非法字符 ({})",
+                file.old_name,
                 file.new_name
             ));
         }
     }
     
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    }else {
+        Err(errors.join("\n"))
+    }
 }
 
 fn contains_invalid_chars(name:&str) -> bool {
